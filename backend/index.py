@@ -39,6 +39,10 @@ def get_session_history(session_id: str):
         store[session_id] = InMemoryChatMessageHistory()
     return store[session_id]
 
+@app.head("/uptime")
+def uptime():
+    return {"status": "alive"}
+
 @app.post("/chat", response_model=ChatResponse)
 async def chat_endpoint(request: ChatRequest):
 
