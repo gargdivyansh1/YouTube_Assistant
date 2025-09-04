@@ -7,7 +7,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             video_id: message.video_id,
-            session_id: "default",      
+            session_id: message.video_id.toLowerCase(),      
             question: message.question
           })
         });
