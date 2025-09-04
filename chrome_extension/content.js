@@ -114,12 +114,24 @@ container.innerHTML = `
     cursor: pointer;
     font-weight: 600;
     font-size: 14px;
-    background: #FF0000;
-    color: #fff;
-    box-shadow: 0 4px 12px rgba(255,0,0,0.3);
     transition: all 0.25s ease;
 }
 #yt-ai-assistant button:hover {
+    transform: scale(1.02);
+}
+#yt-ai-assistant .voice-btn {
+    background: #000;
+    color: #fff;
+}
+#yt-ai-assistant .voice-btn:hover {
+    background: #111;
+}
+#yt-ai-assistant #yt-askBtn {
+    background: #FF0000;
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(255,0,0,0.3);
+}
+#yt-ai-assistant #yt-askBtn:hover {
     background: #e60000;
     box-shadow: 0 6px 16px rgba(255,0,0,0.4);
 }
@@ -175,6 +187,24 @@ container.innerHTML = `
     top: 50%;
     left: 50%;
 }
+#yt-ai-assistant .voice-toggle {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: bold;
+    color: #aaa;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+#yt-ai-assistant .voice-toggle.active {
+    background: #00bfff;
+    color: #fff;
+}
 </style>
 
 <div class="container">
@@ -184,6 +214,7 @@ container.innerHTML = `
             <h1>AI Assistant</h1>
         </div>
         <div class="controls">
+            <div class="voice-toggle" id="voiceToggle" title="Toggle Voice">🔊</div>
             <div class="control-btn minimize-btn">−</div>
             <div class="control-btn close-btn">×</div>
         </div>
@@ -194,6 +225,7 @@ container.innerHTML = `
         <div class="char-count"><span id="char-count">0</span>/200</div>
     </div>
     
+    <button id="yt-voiceBtn" class="voice-btn">Speak</button>
     <button id="yt-askBtn">Ask</button>
     
     <div class="answer" id="yt-answer">
@@ -217,6 +249,10 @@ window.addEventListener("load", () => {
   const textarea = document.getElementById("yt-question");
   const charCount = document.getElementById("char-count");
   const answerDiv = document.getElementById("yt-answer");
+  const voiceBtn = document.getElementById("yt-voiceBtn");
+  const voiceToggle = document.getElementById("voiceToggle");
+
+  let voiceEnabled = true; 
 
   textarea.addEventListener("input", () => {
     charCount.textContent = textarea.value.length;
@@ -243,6 +279,61 @@ window.addEventListener("load", () => {
     }
   });
 
+  let recognition;
+  if ("webkitSpeechRecognition" in window) {
+    recognition = new webkitSpeechRecognition();
+    recognition.lang = "en-US";
+    recognition.continuous = false;
+    recognition.interimResults = false;
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      textarea.value = transcript;
+      charCount.textContent = transcript.length;
+    };
+
+    recognition.onerror = (event) => {
+      console.error("Speech recognition error:", event.error);
+    };
+  }
+
+  voiceBtn.addEventListener("click", () => {
+    if (recognition) {
+      recognition.start();
+      voiceBtn.textContent = "Listening...";
+      setTimeout(() => (voiceBtn.textContent = "Speak"), 4000);
+    } else {
+      alert("Speech recognition not supported in this browser.");
+    }
+  });
+
+  function stopSpeaking() {
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+  }
+
+  voiceToggle.addEventListener("click", () => {
+    voiceEnabled = !voiceEnabled;
+    voiceToggle.classList.toggle("active", voiceEnabled);
+    voiceToggle.textContent = voiceEnabled ? "🔊" : "🔇";
+
+    if (!voiceEnabled) {
+      stopSpeaking(); 
+    }
+  });
+
+  function speakAnswer(text) {
+    if (voiceEnabled && "speechSynthesis" in window) {
+      stopSpeaking(); 
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = "en-US";
+      utterance.rate = 1;
+      utterance.pitch = 1;
+      window.speechSynthesis.speak(utterance);
+    }
+  }
+
   document.addEventListener("click", (e) => {
     if (e.target.id === "yt-askBtn") {
       const question = textarea.value.trim();
@@ -267,6 +358,7 @@ window.addEventListener("load", () => {
       chrome.runtime.sendMessage({ type: "askAI", question, video_id }, (response) => {
         let answer = response?.answer || "No answer returned.";
         answer = answer.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+        answer = answer.replace(/(^|\n)###\s*(.+)/g, "$1<h3>$2</h3>");
 
         const formattedHTML = `
           <div style="
@@ -285,6 +377,10 @@ window.addEventListener("load", () => {
             <div style="white-space: pre-wrap;">${answer}</div>
           </div>`;
         answerDiv.innerHTML = formattedHTML;
+
+        if (voiceEnabled) {
+          speakAnswer(answer || "");
+        }
       });
     }
   });
