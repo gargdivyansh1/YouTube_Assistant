@@ -3,13 +3,16 @@ from pydantic import BaseModel
 import uvicorn
 import os
 from fastapi.middleware.cors import CORSMiddleware
-from backend.main import get_transcript, merge_and_split_segments
+from backend.main import get_transcript, merge_and_split_segments, get_session_history
 from backend.main import chain_with_memory
 from langchain_core.chat_history import InMemoryChatMessageHistory
 from langchain_openai import OpenAIEmbeddings
 from pinecone import Pinecone, ServerlessSpec
 from langchain_pinecone import PineconeVectorStore
 import re
+
+# earlier what i am doing is making the different index for different video .. which is very very wrong
+INDEX_NAME = "youtube-assistant"
 
 app = FastAPI()
 
@@ -32,13 +35,7 @@ class ChatResponse(BaseModel):
 retriever_cache = {}
 store = {}
 
-i = 1
-
-def get_session_history(session_id: str):
-    if session_id not in store:
-        store[session_id] = InMemoryChatMessageHistory()
-    return store[session_id]
-
+# a route for keeping the backend active on free service on render
 @app.head("/uptime")
 def uptime():
     return {"status": "alive"}
@@ -47,6 +44,8 @@ def uptime():
 async def chat_endpoint(request: ChatRequest):
 
     video_id = request.video_id
+    # fixed the session id ... as earlier the session id is same for all . .
+    # thus giving wrong results quite a few times 
     session_id = request.session_id
     question = request.question
 
@@ -62,12 +61,10 @@ async def chat_endpoint(request: ChatRequest):
             return ChatResponse(answer= "No transcript available for this video.")
         
         pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
-        safe_id = re.sub(r'[^a-z0-9]', '-', video_id.lower())
-        index_name = f"yt-abc{i+1}"
 
-        if index_name not in pc.list_indexes().names():
+        if INDEX_NAME not in pc.list_indexes().names():
             pc.create_index(
-                name=index_name,
+                name=INDEX_NAME,
                 dimension=1536,
                 metric="cosine",
                 spec=ServerlessSpec(cloud="aws", region="us-east-1")
@@ -78,11 +75,13 @@ async def chat_endpoint(request: ChatRequest):
         vectorstore = PineconeVectorStore.from_texts(
             texts=[chunk["text"] for chunk in chunks],
             embedding=embeddings,
-            index_name=index_name,
+            index_name=INDEX_NAME,
+            # include the different namespace for different video 
+            namespace=video_id,
             metadatas=[{"start": chunk["start"], "duration": chunk["duration"]} for chunk in chunks],
         )
 
-        retriever_cache[video_id] = vectorstore.as_retriever(search_type='similarity', search_kwargs={'k': 4})
+        retriever_cache[video_id] = vectorstore.as_retriever(search_type='similarity', search_kwargs={'k': 4}, namespace=video_id)
     else:
         print(f"Using cached retriever for video: {video_id}")
 
