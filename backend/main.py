@@ -1,8 +1,17 @@
+# for having real time access to youtube files
 from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled
+
+# for downloading the audio file from youtube
 import yt_dlp
+
+# for converting the audio into text
 from faster_whisper import WhisperModel
 import os
+
+# for breaking the audio into segments
 from pydub import AudioSegment
+
+import uuid
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_openai import ChatOpenAI
 from dotenv import load_dotenv
@@ -15,15 +24,19 @@ load_dotenv()
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 
-llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, api_key=os.getenv("OPENAI_API_KEY")) # type:ignore
+
 ytt_api = YouTubeTranscriptApi()
 
-def get_audio_from_youtube(url, output_path="audio.mp3"):
+# here we are downloading the audio using the yt_dlp 
+# and typically we don't need to return anything but for not remembering the audio location we are simply returning the name passed in the parameter
+def get_audio_from_youtube(url, output_path):
     ydl_opts = {"format": "bestaudio/best", "outtmpl": output_path, "postprocessors": []}
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         ydl.download([url])
     return output_path
 
+# spitting the audio in many audio of 5 minutes 
 def split_audio(audio_path, chunk_length_ms=300000):
     audio = AudioSegment.from_file(audio_path)
     chunks = []
@@ -36,6 +49,7 @@ def split_audio(audio_path, chunk_length_ms=300000):
 
 def get_transcript(video_id, video_url):
     try:
+        # directly fetching the transcript if it is available
         fetched_transcript = ytt_api.fetch(
             video_id,
             languages=["en", "hi", "es", "fr", "de", "ru", "pt", "ja", "ko", "zh-Hans", "ar"]
@@ -47,8 +61,16 @@ def get_transcript(video_id, video_url):
         return transcript
     except TranscriptsDisabled:
         print("No captions available, falling back to ASR...")
-        audio_file = get_audio_from_youtube(video_url)
+
+        output_path = f"file{video_id}.mp3"
+        audio_file = get_audio_from_youtube(video_url, output_path=output_path)
+
+        # now if the audio is too big to handle in single go .. 
+        # so we will be breaking it into smaller length 
         audio_size = os.path.getsize(audio_file) / (1024 * 1024)
+
+        # we will be using the wisper for generating the text from the audio downloaded
+        # here using the tiny model as the bigger model has the more computing time but way more accurate then this tiny model
         model = WhisperModel("tiny", device="cpu", compute_type="int8")
         
         transcript_segments = []
@@ -57,6 +79,7 @@ def get_transcript(video_id, video_url):
         if audio_size < 25:
             segments, _ = model.transcribe(audio_file)
             for segment in segments:
+                # appending in the same format that we got when we download the transcript
                 transcript_segments.append({
                     "text": segment.text,
                     "start": segment.start,
@@ -72,8 +95,12 @@ def get_transcript(video_id, video_url):
                         "start": current_time + segment.start,
                         "duration": segment.end - segment.start
                     })
+                # adding 5 minutes
                 current_time += 300  
                 os.remove(chunk)
+
+        # deleting the video .. as once the audio is processed then it no longer reqire the audio .. and this could be applied like .. if 1 user had ever processed the video .. then it would be used for all the others users too .. as the audio transcript is saved in the vector database with the video_id and it is same for all users 
+        os.remove(audio_file)
         
         return transcript_segments
 
