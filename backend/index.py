@@ -3,8 +3,8 @@ from pydantic import BaseModel
 import uvicorn
 import os
 from fastapi.middleware.cors import CORSMiddleware
-from main import get_transcript, merge_and_split_segments
-from main import chain_with_memory
+from backend.main import get_transcript, merge_and_split_segments
+from backend.main import chain_with_memory
 from langchain_core.chat_history import InMemoryChatMessageHistory
 from langchain_openai import OpenAIEmbeddings
 from pinecone import Pinecone, ServerlessSpec
