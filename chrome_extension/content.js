@@ -280,6 +280,7 @@ window.addEventListener("load", () => {
   });
 
   let recognition;
+  // this is not workin on brave .. but working on chrome
   if ("webkitSpeechRecognition" in window) {
     recognition = new webkitSpeechRecognition();
     recognition.lang = "en-US";
