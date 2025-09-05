@@ -85,6 +85,7 @@ def get_transcript(video_id, video_url):
                     "start": segment.start,
                     "duration": segment.end - segment.start
                 })
+            os.remove(audio_file) # now it is correct 
         else:
             chunks = split_audio(audio_file)
             for chunk in chunks:
@@ -95,12 +96,18 @@ def get_transcript(video_id, video_url):
                         "start": current_time + segment.start,
                         "duration": segment.end - segment.start
                     })
+
                 # adding 5 minutes
-                current_time += 300  
+                current_time += 300 
+                # after processing the chunk we are deleting it .. this is correct  
                 os.remove(chunk)
 
+        # this is wrong as for the larger video there will not be a single file ... and hence it would give error..
+        # for correcting we have to delete the files in the try catch block itself
+
         # deleting the video .. as once the audio is processed then it no longer reqire the audio .. and this could be applied like .. if 1 user had ever processed the video .. then it would be used for all the others users too .. as the audio transcript is saved in the vector database with the video_id and it is same for all users 
-        os.remove(audio_file)
+
+        # os.remove(audio_path)
         
         return transcript_segments
 
@@ -163,6 +170,7 @@ Your goal is to provide accurate, thoughtful, and context-aware responses to the
 You can perform multiple types of tasks, such as answering questions, generating text, summarizing, 
 explaining concepts, giving recommendations, and more.
 If the query is for summarizing or explaing the song or any poetry then do explain deeply.
+Remember if the query is not related to the context provide then simply say I can't answer out of file context queries.. 
 
 ### Available Information
 - **Conversation History:** {history}
